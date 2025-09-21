@@ -1,0 +1,14 @@
+{
+  "device_id": "edge_device_001",
+  "api_endpoint": "http://localhost:8000/api/events",
+  "api_token": "demo_token",
+  "confidence_threshold": 0.7,
+  "input_resolution": [
+    224,
+    224
+  ],
+  "camera_index": 0,
+  "inference_interval": 2.0,
+  "offline_mode": false,
+  "max_offline_events": 1000
+}

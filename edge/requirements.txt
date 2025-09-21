@@ -1,0 +1,10 @@
+# General dependencies
+requests
+numpy
+opencv-python
+
+# Choose one of the following for TFLite inference
+# On Raspberry Pi (32-bit/64-bit arm)
+# tflite-runtime==2.5.0.post1
+# Or on other systems
+tensorflow
