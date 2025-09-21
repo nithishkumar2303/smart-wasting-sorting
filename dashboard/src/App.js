@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { LineChart, Line, AreaChart, Area, PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { Activity, Trash2, Users, MapPin, TrendingUp, Award, AlertTriangle, CheckCircle } from 'lucide-react';
-
+import React, { useState, useEffect } from 'react';
+import { api } from "./api";
 // Mock API functions (replace with real API calls)
 const mockApi = {
   getStats: async () => ({
@@ -179,8 +180,65 @@ export default function SmartWasteDashboard() {
   const [devices, setDevices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
+  const load = async () => {
+    const [{ data: s }, { data: d }, { data: e }] = await Promise.all([
+      api.get("/stats"),
+      api.get("/devices"),
+      api.get("/events/recent", { params: { limit: 10 } }) // new endpoint
+    ]);
+
+    // Normalize for UI
+    const eventsByClass = s.events_by_category || {};
+    const accuracyRate = Math.round(((s.accuracy_metrics?.high_confidence_ratio || 0) * 100) * 10) / 10;
+
+    // Active devices (status=active or last_seen within 15m)
+    const now = Date.now();
+    const devicesList = (d.devices || []).map(dev => {
+      const last = dev.last_seen ? new Date(dev.last_seen).getTime() : 0;
+      const active = dev.status === "active" || (now - last) < 15 * 60 * 1000;
+      return { ...dev, active, total_classifications: dev.events_24h || 0, avg_confidence: 0.85 };
+    });
+
+    setStats({
+      total_events: s.total_events || 0,
+      events_by_class: eventsByClass,
+      accuracy_rate: accuracyRate,
+      active_devices: devicesList.filter(x => x.active).length,
+      total_users: 0,             // backend doesn’t expose yet
+      contamination_rate: null    // not available; omit or compute later
+    });
+
+    // Build a simple 7-day trend from time_series (optional simple mapping)
+    const groupedByDay = {};
+    (s.time_series || []).forEach(row => {
+      const day = (row.timestamp || '').slice(0, 10) || 'unknown';
+      if (!groupedByDay[day]) groupedByDay[day] = { date: day, biodegradable: 0, recyclable: 0, landfill: 0 };
+      groupedByDay[day].biodegradable += row.biodegradable || 0;
+      groupedByDay[day].recyclable += row.recyclable || 0;
+      groupedByDay[day].landfill += row.landfill || 0;
+    });
+    setTrends(Object.values(groupedByDay).sort((a,b) => a.date.localeCompare(b.date)));
+
+    // Events mapping for table
+    const mappedEvents = (e.events || []).map(ev => ({
+      id: ev.event_id,
+      device_id: ev.device_id,
+      timestamp: ev.timestamp,
+      predicted_class: ev.category,
+      confidence: ev.confidence,
+      low_confidence: ev.confidence < 0.8
+    }));
+    setEvents(mappedEvents);
+
+    setDevices(devicesList);
+    setLoading(false);
+  };
+
 
   useEffect(() => {
+    load().catch(err => { console.error(err); setLoading(false); });
+    const id = setInterval(load, 30000);
+    return () => clearInterval(id);
     const fetchData = async () => {
       try {
         const [statsData, eventsData, trendsData, leaderboardData, devicesData] = await Promise.all([

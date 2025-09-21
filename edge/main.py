@@ -10,6 +10,7 @@ import os
 import argparse
 from collections import deque
 import sqlite3
+from datetime import datetime, timezone
 
 try:
     import tflite_runtime.interpreter as tflite
@@ -248,11 +249,11 @@ class EdgeInferenceSystem:
             event_id, timestamp, device_id, category, confidence, image_path, synced, created_at = event
             
             event_data = {
-                'timestamp': timestamp,
-                'device_id': device_id,
-                'category': category,
-                'confidence': confidence,
-                'event_id': f"offline_{event_id}"
+            'timestamp': datetime.now(timezone.utc).isoformat().replace('+00:00','Z'),
+            'device_id': self.config['device_id'],
+            'category': result['category'],
+            'confidence': result['confidence'],
+            'inference_time': result['inference_time']
             }
             
             success, response = self.send_to_backend(event_data)
@@ -443,6 +444,14 @@ class EdgeInferenceSystem:
             'avg_inference_time_ms': avg_inference_time * 1000,
             'model_path': self.model_path
         }
+
+    def preprocess_image(self, image):
+        target_size = tuple(self.config['input_resolution'])
+        # Convert BGR -> RGB to match training
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        image = cv2.resize(image, target_size)
+        image = image.astype(np.float32) / 255.0
+        return np.expand_dims(image, axis=0)
 
 def main():
     parser = argparse.ArgumentParser(description='Smart Waste Sorting Edge System')

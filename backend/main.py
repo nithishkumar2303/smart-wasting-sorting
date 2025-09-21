@@ -11,6 +11,7 @@ from contextlib import contextmanager
 import logging
 from collections import defaultdict
 import asyncio
+from fastapi import Query
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -480,6 +481,35 @@ async def health_check():
         "timestamp": datetime.now().isoformat(),
         "version": "1.0.0"
     }
+@app.get("/api/events/recent")
+async def recent_events(
+    limit: int = Query(10, ge=1, le=100),
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    waste_api.verify_token(credentials)
+    try:
+        with waste_api.get_db() as conn:
+            c = conn.cursor()
+            c.execute("""
+                SELECT id, timestamp, device_id, category, confidence, user_id, created_at
+                FROM events
+                ORDER BY id DESC
+                LIMIT ?
+            """, (limit,))
+            rows = c.fetchall()
+        events = [{
+            "event_id": f"evt_{r[0]}",
+            "timestamp": r[1],
+            "device_id": r[2],
+            "category": r[3],
+            "confidence": r[4],
+            "user_id": r[5],
+            "created_at": r[6]
+        } for r in rows]
+        return {"events": events}
+    except Exception as e:
+        logger.error(f"Error fetching recent events: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch recent events")
 
 async def process_event_background(event: WasteEvent, event_id: int):
     """Background processing for events"""

@@ -9,6 +9,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, confusion_matrix
 import matplotlib.pyplot as plt
 from datetime import datetime
+from tensorflow.keras import metrics as kmetrics
 
 class WasteClassificationModel:
     def __init__(self, input_shape=(224, 224, 3), num_classes=3):
@@ -43,11 +44,10 @@ class WasteClassificationModel:
         return model
     
     def compile_model(self, learning_rate=1e-4):
-        """Compile the model with optimizer and loss function"""
         self.model.compile(
             optimizer=keras.optimizers.Adam(learning_rate=learning_rate),
             loss='categorical_crossentropy',
-            metrics=['accuracy', 'precision', 'recall']
+            metrics=['accuracy', kmetrics.Precision(name="precision"), kmetrics.Recall(name="recall")]
         )
     
     def create_data_generators(self, data_dir, batch_size=32, validation_split=0.2):
@@ -84,12 +84,7 @@ class WasteClassificationModel:
         return train_generator, validation_generator
     
     def train(self, data_dir, epochs=20, batch_size=32, fine_tune_epochs=10):
-        """Train the model with transfer learning"""
-        print("Creating data generators...")
-        train_gen, val_gen = self.create_data_generators(data_dir, batch_size)
-        
-        print("Starting initial training (frozen base)...")
-        
+        os.makedirs('model', exist_ok=True)
         # Callbacks
         callbacks = [
             keras.callbacks.EarlyStopping(patience=5, restore_best_weights=True),
@@ -159,10 +154,9 @@ class WasteClassificationModel:
         """Convert model to TensorFlow Lite format"""
         converter = tf.lite.TFLiteConverter.from_keras_model(self.model)
         converter.optimizations = [tf.lite.Optimize.DEFAULT]
-        converter.target_spec.supported_types = [tf.lite.constants.FLOAT16]
-        
+        converter.target_spec.supported_types = [tf.float16]
         tflite_model = converter.convert()
-        
+
         # Save the model
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         with open(output_path, 'wb') as f:
