@@ -20,6 +20,14 @@ except ImportError:
     import tensorflow as tf
     TFLITE_AVAILABLE = False
 
+def load_class_names(path="model_info.json", default=None):
+        default = default or ["biodegradable", "recyclable", "landfill"]
+        try:
+            with open(path, "r") as f:
+                return json.load(f).get("class_names", default)
+        except Exception:
+            return default
+
 class EdgeInferenceSystem:
     def __init__(self, model_path, config_file='edge_config.json'):
         self.model_path = model_path
@@ -144,10 +152,7 @@ class EdgeInferenceSystem:
         # Normalize to [0, 1]
         image= (image-127.5)/127.5
         
-        # Add batch dimension
-        image = np.expand_dims(image, axis=0)
-        
-        return image
+        return np.expand_dims(image, axis=0)
     
     def run_inference(self, image):
         """Run inference on preprocessed image"""
@@ -362,13 +367,6 @@ class EdgeInferenceSystem:
             cv2.putText(image, perf_text, (10, image.shape[0] - 20), font, 0.4, (200, 200, 200), 1)
         
         return image
-    def load_class_names(path="model_info.json", default=None):
-        default = default or ["biodegradable", "recyclable", "landfill"]
-        try:
-            with open(path, "r") as f:
-                return json.load(f).get("class_names", default)
-        except Exception:
-            return default
 
     def run_camera_demo(self, camera_index=None):
         """Run live camera demo"""

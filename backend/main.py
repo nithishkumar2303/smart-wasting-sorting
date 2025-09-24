@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 class WasteEvent(BaseModel):
     timestamp: str
     device_id: str
-    category: str = Field(..., regex="^(biodegradable|recyclable|landfill)$")
+    category: str = Field(..., pattern="^(biodegradable|recyclable|landfill)$")
     confidence: float = Field(..., ge=0, le=1)
     inference_time: Optional[float] = None
     event_id: Optional[str] = None
@@ -35,7 +35,7 @@ class DeviceRegistration(BaseModel):
 class UserReport(BaseModel):
     device_id: str
     user_id: Optional[str] = None
-    report_type: str = Field(..., regex="^(incorrect_classification|bin_full|maintenance)$")
+    report_type: str = Field(..., pattern="^(incorrect_classification|bin_full|maintenance)$")
     description: str
     image_url: Optional[str] = None
 
