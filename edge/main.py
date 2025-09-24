@@ -23,9 +23,10 @@ except ImportError:
 class EdgeInferenceSystem:
     def __init__(self, model_path, config_file='edge_config.json'):
         self.model_path = model_path
+        info_path = os.path.join(os.path.dirname(self.model_path), "model_info.json")
         self.config = self.load_config(config_file)
         self.interpreter = None
-        self.class_names = ['biodegradable', 'recyclable', 'landfill']
+        self.class_names = load_class_names(info_path, default=['biodegradable','recyclable','landfill'])
         self.tips = self.load_tips()
         
         # Initialize local database for offline storage
@@ -134,14 +135,13 @@ class EdgeInferenceSystem:
     
     def preprocess_image(self, image):
         """Preprocess image for inference"""
-        target_size = tuple(self.config['input_resolution'])
+        target_size = tuple(self.config.get('input_resolution', [224,224]))
         
         # Resize image
         image = cv2.resize(image, target_size)
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB).astype(np.float32)
         
         # Normalize to [0, 1]
-        image = image.astype(np.float32)
         image= (image-127.5)/127.5
         
         # Add batch dimension
@@ -170,24 +170,36 @@ class EdgeInferenceSystem:
         return predictions, inference_time
     
     def classify_image(self, image):
-        """Complete classification pipeline"""
-        # Preprocess
         processed_image = self.preprocess_image(image)
-        
-        # Inference
         predictions, inference_time = self.run_inference(processed_image)
-        
-        # Get results
-        predicted_class_idx = np.argmax(predictions)
-        confidence = float(predictions[predicted_class_idx])
+        probs = predictions  # 1D array of softmax scores
+
+        # Initial top-1
+        predicted_class_idx = int(np.argmax(probs))
+        confidence = float(probs[predicted_class_idx])
         category = self.class_names[predicted_class_idx]
-        
+
+        # Guardrail: prefer landfill if recyclable is uncertain
+        if 'recyclable' in self.class_names and 'landfill' in self.class_names:
+            i_rec = self.class_names.index('recyclable')
+            i_lf  = self.class_names.index('landfill')
+            p_rec = float(probs[i_rec])
+            p_lf  = float(probs[i_lf])
+
+            # Allow thresholds from config; use defaults if missing
+            rec_hi = float(self.config.get('recycle_decision_threshold', 0.70))
+            lf_min = float(self.config.get('landfill_guardrail_threshold', 0.30))
+
+            if p_rec < rec_hi and p_lf > lf_min:
+                category = 'landfill'
+                confidence = p_lf
+
         return {
             'category': category,
             'confidence': confidence,
             'inference_time': inference_time,
             'all_predictions': {
-                self.class_names[i]: float(predictions[i]) 
+                self.class_names[i]: float(probs[i])
                 for i in range(len(self.class_names))
             }
         }
@@ -350,7 +362,14 @@ class EdgeInferenceSystem:
             cv2.putText(image, perf_text, (10, image.shape[0] - 20), font, 0.4, (200, 200, 200), 1)
         
         return image
-    
+    def load_class_names(path="model_info.json", default=None):
+        default = default or ["biodegradable", "recyclable", "landfill"]
+        try:
+            with open(path, "r") as f:
+                return json.load(f).get("class_names", default)
+        except Exception:
+            return default
+
     def run_camera_demo(self, camera_index=None):
         """Run live camera demo"""
         if camera_index is None:

@@ -1,0 +1,16 @@
+{
+  "model_type": "EfficientNet-B0",
+  "class_names": [
+    "biodegradable",
+    "landfill",
+    "recyclable"
+  ],
+  "input_shape": [
+    224,
+    224,
+    3
+  ],
+  "preprocessing": "efficientnet",
+  "created_at": "2025-09-24T12:52:55.156226",
+  "model_size_mb": 8.010677337646484
+}

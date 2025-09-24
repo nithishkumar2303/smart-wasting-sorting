@@ -2,7 +2,8 @@
   "device_id": "edge_device_001",
   "api_endpoint": "http://localhost:8000/api/events",
   "api_token": "demo_token",
-  "confidence_threshold": 0.7,
+  "model_path": "waste_efficientnet.tflite",
+  "confidence_threshold": 0.6,
   "input_resolution": [
     224,
     224
