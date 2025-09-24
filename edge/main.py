@@ -138,9 +138,11 @@ class EdgeInferenceSystem:
         
         # Resize image
         image = cv2.resize(image, target_size)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         
         # Normalize to [0, 1]
-        image = image.astype(np.float32) / 255.0
+        image = image.astype(np.float32)
+        image= (image-127.5)/127.5
         
         # Add batch dimension
         image = np.expand_dims(image, axis=0)
