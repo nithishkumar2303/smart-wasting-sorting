@@ -1,51 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { LineChart, Line, AreaChart, Area, PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { Activity, Trash2, Users, MapPin, TrendingUp, Award, AlertTriangle, CheckCircle } from 'lucide-react';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
+import {
+  LineChart, Line, AreaChart, Area, PieChart, Pie, Cell,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+} from "recharts";
+import {
+  Activity, Trash2, Users, MapPin, Award, AlertTriangle, CheckCircle
+} from "lucide-react";
 import { api } from "./api";
-// Mock API functions (replace with real API calls)
-const mockApi = {
-  getStats: async () => ({
-    total_events: 1247,
-    events_by_class: { biodegradable: 456, recyclable: 523, landfill: 268 },
-    accuracy_rate: 87.3,
-    active_devices: 12,
-    total_users: 89,
-    contamination_rate: 12.7
-  }),
-  
-  getEvents: async (limit = 10) => Array.from({ length: limit }, (_, i) => ({
-    id: i + 1,
-    device_id: `device_${(i % 5) + 1}`,
-    timestamp: new Date(Date.now() - i * 300000).toISOString(),
-    predicted_class: ['biodegradable', 'recyclable', 'landfill'][i % 3],
-    confidence: 0.7 + Math.random() * 0.3,
-    low_confidence: Math.random() > 0.8
-  })),
-  
-  getTrends: async () => Array.from({ length: 7 }, (_, i) => ({
-    date: new Date(Date.now() - (6 - i) * 86400000).toLocaleDateString(),
-    biodegradable: Math.floor(Math.random() * 100) + 50,
-    recyclable: Math.floor(Math.random() * 120) + 60,
-    landfill: Math.floor(Math.random() * 80) + 30
-  })),
-  
-  getLeaderboard: async () => Array.from({ length: 5 }, (_, i) => ({
-    user_id: `user_${i + 1}`,
-    username: [`EcoWarrior`, `GreenGuru`, `RecycleKing`, `EarthSaver`, `WasteWise`][i],
-    total_points: Math.floor(Math.random() * 1000) + 200
-  })).sort((a, b) => b.total_points - a.total_points),
-  
-  getDevices: async () => Array.from({ length: 5 }, (_, i) => ({
-    device_id: `device_${i + 1}`,
-    location_lat: 13.0827 + (Math.random() - 0.5) * 0.1,
-    location_lng: 80.2707 + (Math.random() - 0.5) * 0.1,
-    last_seen: new Date(Date.now() - Math.random() * 3600000).toISOString(),
-    active: Math.random() > 0.2,
-    total_classifications: Math.floor(Math.random() * 200) + 50,
-    avg_confidence: 0.7 + Math.random() * 0.25
-  }))
-};
 
 // Components
 const StatCard = ({ title, value, icon: Icon, color = 'blue', change, unit = '' }) => (
@@ -56,7 +17,7 @@ const StatCard = ({ title, value, icon: Icon, color = 'blue', change, unit = '' 
         <p className="text-2xl font-bold text-gray-900">
           {value}{unit}
         </p>
-        {change && (
+        {typeof change === "number" && (
           <p className={`text-xs ${change > 0 ? 'text-green-600' : 'text-red-600'}`}>
             {change > 0 ? '+' : ''}{change}% from last week
           </p>
@@ -180,90 +141,73 @@ export default function SmartWasteDashboard() {
   const [devices, setDevices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
+
   const load = async () => {
-    const [{ data: s }, { data: d }, { data: e }] = await Promise.all([
-      api.get("/stats"),
-      api.get("/devices"),
-      api.get("/events/recent", { params: { limit: 10 } }) // new endpoint
-    ]);
+    try {
+      const [{ data: s }, { data: d }, { data: e }] = await Promise.all([
+        api.get("/stats"),
+        api.get("/devices"),
+        api.get("/events/recent", { params: { limit: 10 } }),
+      ]);
 
-    // Normalize for UI
-    const eventsByClass = s.events_by_category || {};
-    const accuracyRate = Math.round(((s.accuracy_metrics?.high_confidence_ratio || 0) * 100) * 10) / 10;
+      const eventsByClass = s.events_by_category || {};
+      const accuracyRate = Math.round(((s.accuracy_metrics?.high_confidence_ratio || 0) * 100) * 10) / 10;
 
-    // Active devices (status=active or last_seen within 15m)
-    const now = Date.now();
-    const devicesList = (d.devices || []).map(dev => {
-      const last = dev.last_seen ? new Date(dev.last_seen).getTime() : 0;
-      const active = dev.status === "active" || (now - last) < 15 * 60 * 1000;
-      return { ...dev, active, total_classifications: dev.events_24h || 0, avg_confidence: 0.85 };
-    });
+      const now = Date.now();
+      const devicesList = (d.devices || []).map(dev => {
+        const last = dev.last_seen ? new Date(dev.last_seen).getTime() : 0;
+        const active = dev.status === "active" || (now - last) < 15 * 60 * 1000;
+        return { ...dev, active, total_classifications: dev.events_24h || 0, avg_confidence: 0.85 };
+      });
 
-    setStats({
-      total_events: s.total_events || 0,
-      events_by_class: eventsByClass,
-      accuracy_rate: accuracyRate,
-      active_devices: devicesList.filter(x => x.active).length,
-      total_users: 0,             // backend doesn’t expose yet
-      contamination_rate: null    // not available; omit or compute later
-    });
+      setStats({
+        total_events: s.total_events || 0,
+        events_by_class: eventsByClass,
+        accuracy_rate: accuracyRate,
+        active_devices: devicesList.filter(x => x.active).length,
+        total_users: 0,
+        contamination_rate: null
+      });
 
-    // Build a simple 7-day trend from time_series (optional simple mapping)
-    const groupedByDay = {};
-    (s.time_series || []).forEach(row => {
-      const day = (row.timestamp || '').slice(0, 10) || 'unknown';
-      if (!groupedByDay[day]) groupedByDay[day] = { date: day, biodegradable: 0, recyclable: 0, landfill: 0 };
-      groupedByDay[day].biodegradable += row.biodegradable || 0;
-      groupedByDay[day].recyclable += row.recyclable || 0;
-      groupedByDay[day].landfill += row.landfill || 0;
-    });
-    setTrends(Object.values(groupedByDay).sort((a,b) => a.date.localeCompare(b.date)));
-
-    // Events mapping for table
-    const mappedEvents = (e.events || []).map(ev => ({
-      id: ev.event_id,
-      device_id: ev.device_id,
-      timestamp: ev.timestamp,
-      predicted_class: ev.category,
-      confidence: ev.confidence,
-      low_confidence: ev.confidence < 0.8
+      const topUsers = (s.top_users || []).map(u => ({
+      user_id: u.user_id,
+      username: u.user_id,
+      total_points: u.points
     }));
-    setEvents(mappedEvents);
+    setLeaderboard(topUsers);
 
-    setDevices(devicesList);
-    setLoading(false);
+      const groupedByDay = {};
+      (s.time_series || []).forEach(row => {
+        const day = (row.timestamp || '').slice(0, 10) || 'unknown';
+        if (!groupedByDay[day]) groupedByDay[day] = { date: day, biodegradable: 0, recyclable: 0, landfill: 0 };
+        groupedByDay[day].biodegradable += row.biodegradable || 0;
+        groupedByDay[day].recyclable += row.recyclable || 0;
+        groupedByDay[day].landfill += row.landfill || 0;
+      });
+      setTrends(Object.values(groupedByDay).sort((a, b) => a.date.localeCompare(b.date)));
+
+      const mappedEvents = (e.events || []).map(ev => ({
+        id: ev.event_id,
+        device_id: ev.device_id,
+        timestamp: ev.timestamp,
+        predicted_class: ev.category,
+        confidence: ev.confidence,
+        low_confidence: ev.confidence < 0.8
+      }));
+      setEvents(mappedEvents);
+
+      setDevices(devicesList);
+      setLoading(false);
+    } catch (err) {
+      console.error(err);
+      setLoading(false);
+    }
   };
 
-
   useEffect(() => {
-    load().catch(err => { console.error(err); setLoading(false); });
+    load();
     const id = setInterval(load, 30000);
     return () => clearInterval(id);
-    const fetchData = async () => {
-      try {
-        const [statsData, eventsData, trendsData, leaderboardData, devicesData] = await Promise.all([
-          mockApi.getStats(),
-          mockApi.getEvents(10),
-          mockApi.getTrends(),
-          mockApi.getLeaderboard(),
-          mockApi.getDevices()
-        ]);
-
-        setStats(statsData);
-        setEvents(eventsData);
-        setTrends(trendsData);
-        setLeaderboard(leaderboardData);
-        setDevices(devicesData);
-        setLoading(false);
-      } catch (error) {
-        console.error('Error fetching data:', error);
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-    const interval = setInterval(fetchData, 30000); // Refresh every 30 seconds
-    return () => clearInterval(interval);
   }, []);
 
   if (loading) {
@@ -336,56 +280,20 @@ export default function SmartWasteDashboard() {
       <div className="px-6 py-6">
         {activeTab === 'overview' && (
           <>
-            {/* Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-              <StatCard
-                title="Total Classifications"
-                value={stats?.total_events.toLocaleString() || '0'}
-                icon={Activity}
-                color="#3b82f6"
-                change={8.2}
-              />
-              <StatCard
-                title="Accuracy Rate"
-                value={stats?.accuracy_rate || 0}
-                icon={CheckCircle}
-                color="#22c55e"
-                unit="%"
-                change={2.1}
-              />
-              <StatCard
-                title="Active Devices"
-                value={stats?.active_devices || 0}
-                icon={MapPin}
-                color="#f59e0b"
-                change={-1.2}
-              />
-              <StatCard
-                title="Contamination Rate"
-                value={stats?.contamination_rate || 0}
-                icon={AlertTriangle}
-                color="#ef4444"
-                unit="%"
-                change={-3.4}
-              />
+              <StatCard title="Total Classifications" value={stats?.total_events.toLocaleString() || '0'} icon={Activity} color="#3b82f6" change={8.2} />
+              <StatCard title="Accuracy Rate" value={stats?.accuracy_rate || 0} icon={CheckCircle} color="#22c55e" unit="%" change={2.1} />
+              <StatCard title="Active Devices" value={stats?.active_devices || 0} icon={MapPin} color="#f59e0b" change={-1.2} />
+              <StatCard title="Contamination Rate" value={stats?.contamination_rate || 0} icon={AlertTriangle} color="#ef4444" unit="%" change={-3.4} />
             </div>
 
-            {/* Charts Row */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-              {/* Waste Composition Pie Chart */}
               <div className="bg-white rounded-lg shadow-md p-6">
                 <h3 className="text-lg font-semibold text-gray-800 mb-4">Waste Composition</h3>
                 <ResponsiveContainer width="100%" height={300}>
                   <PieChart>
-                    <Pie
-                      data={pieData}
-                      cx="50%"
-                      cy="50%"
-                      outerRadius={100}
-                      fill="#8884d8"
-                      dataKey="value"
-                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                    >
+                    <Pie data={pieData} cx="50%" cy="50%" outerRadius={100} fill="#8884d8" dataKey="value"
+                         label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
                       {pieData.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={entry.color} />
                       ))}
@@ -395,7 +303,6 @@ export default function SmartWasteDashboard() {
                 </ResponsiveContainer>
               </div>
 
-              {/* Weekly Trends */}
               <div className="bg-white rounded-lg shadow-md p-6">
                 <h3 className="text-lg font-semibold text-gray-800 mb-4">Weekly Trends</h3>
                 <ResponsiveContainer width="100%" height={300}>
@@ -413,14 +320,12 @@ export default function SmartWasteDashboard() {
               </div>
             </div>
 
-            {/* Recent Events Table */}
             <EventsTable events={events} />
           </>
         )}
 
         {activeTab === 'analytics' && (
           <div className="space-y-6">
-            {/* Detailed Analytics Charts */}
             <div className="bg-white rounded-lg shadow-md p-6">
               <h3 className="text-lg font-semibold text-gray-800 mb-4">Daily Classification Volume</h3>
               <ResponsiveContainer width="100%" height={400}>
@@ -476,7 +381,6 @@ export default function SmartWasteDashboard() {
           <div className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <DeviceStatus devices={devices} />
-              
               <div className="bg-white rounded-lg shadow-md p-6">
                 <h3 className="text-lg font-semibold text-gray-800 mb-4">Device Locations Map</h3>
                 <div className="h-80 bg-gray-100 rounded-lg flex items-center justify-center">
@@ -515,15 +419,9 @@ export default function SmartWasteDashboard() {
                           </span>
                         </td>
                         <td className="py-3 px-4 text-sm text-gray-800">{device.total_classifications}</td>
-                        <td className="py-3 px-4 text-sm text-gray-800">
-                          {(device.avg_confidence * 100).toFixed(1)}%
-                        </td>
-                        <td className="py-3 px-4 text-sm text-gray-600">
-                          {new Date(device.last_seen).toLocaleString()}
-                        </td>
-                        <td className="py-3 px-4 text-sm text-gray-800">
-                          {device.active ? '99.2%' : '0%'}
-                        </td>
+                        <td className="py-3 px-4 text-sm text-gray-800">{(device.avg_confidence * 100).toFixed(1)}%</td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{new Date(device.last_seen).toLocaleString()}</td>
+                        <td className="py-3 px-4 text-sm text-gray-800">{device.active ? '99.2%' : '0%'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -537,7 +435,6 @@ export default function SmartWasteDashboard() {
           <div className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <LeaderboardCard leaderboard={leaderboard} />
-              
               <div className="bg-white rounded-lg shadow-md p-6">
                 <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
                   <Users className="mr-2 text-blue-500" size={20} />
@@ -571,7 +468,7 @@ export default function SmartWasteDashboard() {
             <div className="bg-white rounded-lg shadow-md p-6">
               <h3 className="text-lg font-semibold text-gray-800 mb-4">User Activity Timeline</h3>
               <ResponsiveContainer width="100%" height={300}>
-                <AreaChart data={trends.map((day, index) => ({
+                <AreaChart data={trends.map((day) => ({
                   ...day,
                   active_users: Math.floor(Math.random() * 30) + 10,
                   new_users: Math.floor(Math.random() * 5) + 1
@@ -585,34 +482,6 @@ export default function SmartWasteDashboard() {
                   <Area type="monotone" dataKey="new_users" stackId="1" stroke="#22c55e" fill="#22c55e" fillOpacity={0.6} />
                 </AreaChart>
               </ResponsiveContainer>
-            </div>
-
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h3 className="text-lg font-semibold text-gray-800 mb-4">Recent User Activity</h3>
-              <div className="space-y-3">
-                {Array.from({ length: 10 }, (_, i) => ({
-                  user: leaderboard[i % leaderboard.length]?.username || `User${i + 1}`,
-                  action: ['Classified recyclable item', 'Earned 10 points', 'Completed daily challenge', 'Reported incorrect classification'][i % 4],
-                  time: new Date(Date.now() - i * 600000).toLocaleString(),
-                  points: [10, 5, 25, 15][i % 4]
-                })).map((activity, index) => (
-                  <div key={index} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
-                    <div className="flex items-center">
-                      <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-sm font-bold">
-                        {activity.user.charAt(0)}
-                      </div>
-                      <div className="ml-3">
-                        <p className="text-sm font-medium text-gray-800">{activity.user}</p>
-                        <p className="text-xs text-gray-600">{activity.action}</p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-bold text-green-600">+{activity.points} pts</p>
-                      <p className="text-xs text-gray-500">{activity.time}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
             </div>
           </div>
         )}

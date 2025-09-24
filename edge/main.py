@@ -36,6 +36,7 @@ class EdgeInferenceSystem:
         self.interpreter = None
         self.class_names = load_class_names(info_path, default=['biodegradable','recyclable','landfill'])
         self.tips = self.load_tips()
+        self.last_result = None
         
         # Initialize local database for offline storage
         self.init_local_db()
@@ -55,7 +56,8 @@ class EdgeInferenceSystem:
             "device_id": "edge_device_001",
             "api_endpoint": "http://localhost:8000/api/events",
             "api_token": "demo_token",
-            "confidence_threshold": 0.7,
+            "model_path": "waste_efficientnet.tflite",
+            "confidence_threshold": 0.6,
             "input_resolution": [224, 224],
             "camera_index": 0,
             "inference_interval": 2.0,
@@ -126,17 +128,36 @@ class EdgeInferenceSystem:
                 self.interpreter = tflite.Interpreter(model_path=self.model_path)
             else:
                 self.interpreter = tf.lite.Interpreter(model_path=self.model_path)
-            
+
             self.interpreter.allocate_tensors()
-            
-            # Get input/output details
+
+            # Fetch IO details first
             self.input_details = self.interpreter.get_input_details()
             self.output_details = self.interpreter.get_output_details()
-            
+
+            # Sanity: ensure output_details is available
+            if not self.output_details:
+                raise RuntimeError("No output details found in TFLite interpreter")
+
+            # Determine number of output classes from the last dim
+            out_shape = self.output_details[0]["shape"]
+            n_out = int(out_shape[-1])
+
+            # Adjust class_names if mismatch
+            if len(self.class_names) != n_out:
+                print(f"Warning: class_names({len(self.class_names)}) != model outputs({n_out}). Adjusting labels.")
+                default_names = {
+                    2: ["recyclable", "landfill"],
+                    3: ["biodegradable", "recyclable", "landfill"]
+                }.get(n_out, [f"class_{i}" for i in range(n_out)])
+                # Truncate or pad to n_out
+                self.class_names = (self.class_names + default_names)[:n_out]
+
             print(f"Model loaded successfully: {self.model_path}")
-            print(f"Input shape: {self.input_details[0]['shape']}")
+            print(f"Input shape:  {self.input_details[0]['shape']}")
             print(f"Output shape: {self.output_details[0]['shape']}")
-            
+            print(f"Classes: {self.class_names}")
+
         except Exception as e:
             print(f"Error loading model: {e}")
             raise
@@ -373,7 +394,7 @@ class EdgeInferenceSystem:
         if camera_index is None:
             camera_index = self.config['camera_index']
         
-        cap = cv2.VideoCapture(camera_index)
+        cap = cv2.VideoCapture(camera_index, cv2.CAP_DSHOW)
         if not cap.isOpened():
             print(f"Error: Could not open camera {camera_index}")
             return
@@ -400,10 +421,10 @@ class EdgeInferenceSystem:
                 if current_time - last_inference_time >= inference_interval:
                     result = self.classify_image(frame)
                     last_inference_time = current_time
-                    
+                    self.last_result = result
                     # Create event data
                     event_data = {
-                        'timestamp': datetime.now().isoformat(),
+                        'timestamp': datetime.now(timezone.utc).isoformat().replace('+00:00','Z'),
                         'device_id': self.config['device_id'],
                         'category': result['category'],
                         'confidence': result['confidence'],
@@ -415,9 +436,7 @@ class EdgeInferenceSystem:
                         self.event_queue.put(event_data)
                     
                     # Display result
-                    frame_with_result = self.display_result(frame.copy(), result)
-                else:
-                    frame_with_result = frame
+                frame_with_result = self.display_result(frame.copy(), self.last_result) if self.last_result else frame
                 
                 cv2.imshow('Smart Waste Sorting - Edge Demo', frame_with_result)
                 
@@ -464,14 +483,6 @@ class EdgeInferenceSystem:
             'model_path': self.model_path
         }
 
-    def preprocess_image(self, image):
-        target_size = tuple(self.config['input_resolution'])
-        # Convert BGR -> RGB to match training
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        image = cv2.resize(image, target_size)
-        image = image.astype(np.float32) / 255.0
-        return np.expand_dims(image, axis=0)
-
 def main():
     parser = argparse.ArgumentParser(description='Smart Waste Sorting Edge System')
     parser.add_argument('--model', default='model/waste_model.tflite', help='Path to TFLite model')
@@ -505,4 +516,7 @@ def main():
         edge_system.run_camera_demo(args.camera)
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("Interrupted by user.")
